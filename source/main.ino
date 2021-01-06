@@ -1,8 +1,33 @@
-// Version 2.4
+// Version 0.9
 // Copyright © 2020 Leonhard Saam
 // Licensed under GNU GPL v3
 
+// Initsialisierung des Displays
+#include <LCD.h>
+#include <LiquidCrystal_I2C.h>
+#include <Wire.h>
+
+#define I2C_ADDR 0x27 //Define I2C Address where the PCF8574A is
+#define BACKLIGHT_PIN 3
+#define En_pin 2
+#define Rw_pin 1
+#define Rs_pin 0
+#define D4_pin 4
+#define D5_pin 5
+#define D6_pin 6
+#define D7_pin 7
+
+LiquidCrystal_I2C lcd(I2C_ADDR, En_pin,Rw_pin,Rs_pin,D4_pin,D5_pin,D6_pin,D7_pin);
+
+
 // Initsialisierung der Variablen
+
+// interruptabhängige Variablen
+bool interrupthappened = false;
+bool dointerrupt = true;
+bool seite2 = false;
+bool genau = false;
+bool stimmen = false;
 
 // Oberer und unterer Schwellenwert als analoger Wert
 int toptrigger = 640;
@@ -13,7 +38,7 @@ float anzahl = 1000000; // Anzahl der vorhandenen Microsekunden in einer Sekunde
 float time; // Zeitpunkt des Beginns der Zählung.
 float time2; // Zeitpunkt des Endes der Zählung.
 
-bool status = false; // Angabe, ob der vorherige Wert minus war(Zur Entfernung von Mehrfachzählfehlern.
+bool status = false; // Angabe, ob der vorherige Wert minus war(Zur Entfernung von Mehrfachzählfehlern)
 
 int eingabe; // Gemessener analoger Wert
 int wert; // Anzahl der ermittelten Schwingungswellen
@@ -60,7 +85,7 @@ bool notzero = false; // Verhinderung, dass der 6. Gespeicherte Wert 0 ist
 bool saveit = false; // Bestimmt ob "addedsaves" als Save gespeichert werden soll
 
 int calcupall = 0; // Summe der addierten Saves
-int endcalc; // Endergebnis
+float endcalc; // Endergebnis
 
 bool negative = false; // Bestimmt ob der erste Wert verwendet wurde
 
@@ -81,19 +106,151 @@ bool pleaseuse3 = false;
 bool pleaseuse2 = false;
 bool pleaseuse1 = false;
 
+bool referencevariable = false;
 
+int referencevariableint = 0;
+
+bool remeasure = false;
+
+float freq = 0;
 
 
 void setup() {
   Serial.begin(9600); // Initsialisierung des Ausgabe-Protokolls.
+  attachInterrupt(digitalPinToInterrupt(2), interrupt, FALLING);
+  lcd.begin (16,2);
+  lcd.setBacklightPin(BACKLIGHT_PIN,POSITIVE);
+  lcd.setBacklight(HIGH);
+  lcd.clear();
+  lcd.setCursor(0,0);
+  lcd.print("Kalibrierung");
+  lcd.setCursor(0,1);
+  lcd.print("empfohlen");
+  delay(2000);
 }
 
+void interruptroutine()
+{
+  interrupthappened = false;
+  int time3 = millis();
+  bool seitebutton = digitalRead(3);
+  bool genaubutton = digitalRead(4);
+  bool stimmenbutton = digitalRead(5);
+  lcd.clear();
+  lcd.setCursor(0,0);
+  lcd.print("Einstellungsmod.");
+  delay(1000);
+  lcd.clear();
+  lcd.setCursor(0,0);
+  lcd.print("Zum Verlassen");
+  lcd.setCursor(0,1);
+  lcd.print("Knopf druecken");
+     while (true)
+        {
+            int time4 = millis();
+            int timediff = time4- time3;
+            if (digitalRead(3)) {
+                seite2 = true;
+                if (!seitebutton)
+                {
+                  lcd.clear();
+                  lcd.setCursor(0,0);
+                  lcd.print("Konfig. fuer");
+                  lcd.setCursor(0,1);
+                  lcd.print("2. Seite an");
+                  seitebutton = true;
+                  toptrigger = 560;
+                  bottomtrigger = 440;
+                }
+              }
+            else {
+                seite2 = false;
+                if (seitebutton)
+                {
+                  lcd.clear();
+                  lcd.setCursor(0,0);
+                  lcd.print("Konfig. fuer");
+                  lcd.setCursor(0,1);
+                  lcd.print("1. Seite an");
+                  seitebutton = false;
+                  toptrigger = 640;
+                  bottomtrigger = 280;
+                }
+              }
+
+            if (!digitalRead(4)) {
+              genau = true;
+              if (genaubutton)
+                {
+                  lcd.clear();
+                  lcd.setCursor(0,0);
+                  lcd.print("Genauer Ausgabe");
+                  lcd.setCursor(0,1);
+                  lcd.print("modus aktiviert");
+                  genaubutton = false;
+                }
+              }
+            else {
+              genau = false;
+              if (!
+              genaubutton)
+                {
+                  lcd.clear();
+                  lcd.setCursor(0,0);
+                  lcd.print("Genauer Ausgabe");
+                  lcd.setCursor(0,1);
+                  lcd.print("modus aus");
+                  genaubutton = true;
+                }
+            }
+
+            if (digitalRead(5)) 
+            {
+                stimmen = true;
+                if (!stimmenbutton)
+                {
+                  lcd.clear();
+                  lcd.setCursor(0,0);
+                  lcd.print("Wird in Stimm-");
+                  lcd.setCursor(0,1);
+                  lcd.print("modus schalten");
+                  stimmenbutton = true;
+                }
+            }
+            else
+            {
+                stimmen = false;
+                if (stimmenbutton)
+                {
+                  lcd.clear();
+                  lcd.setCursor(0,0);
+                  lcd.print("Wird in Mess-");
+                  lcd.setCursor(0,1);
+                  lcd.print("modus schalten");
+                  stimmenbutton = false;
+                }
+            }
+
+            if (!digitalRead(6)&& timediff >= 1000)
+            {
+                saverun = 0;
+                break;
+            }
+        }
+}
 
 // Frequenzermittler für Signal
 int frequenzmesser()
 {
-  while (gotrough == true) // Verhindert, dass kein Wert gespeichert wird
+  while (gotrough) // Verhindert, dass kein Wert gespeichert wird
   {
+    if (interrupthappened)
+    {
+       interruptroutine();
+       delay(1000);
+    }
+    dointerrupt = true;
+    
     for (int rounds = 1; rounds <= 3; rounds ++) // Misst die Frequenz 3x
     {
       time = micros(); // Messung des Beginns der Zählung.
@@ -141,10 +298,12 @@ int frequenzmesser()
       status = false; // Zurücksetzung von status.
       wert = 0; // Zurücksetzung der Zählungsanzahl.
     }
+
     calc1 = save_1-save_2; // Errenchnung des Unterschiedes zwischen den gespeicherten Werten
     calc2 = save_1-save_3;
     calc3 = save_2-save_3;
     saveruntrue = true; // Legt fest, ob in diesem Durchgang ein Save gespeichert werden soll
+
     if (calc1 < 10 && calc1 > -10 && calc2 < 10 && calc2 > -10 && calc3 < 10 && calc3 > -10) // Bestimmt welche der 3 Werte genommen werden sollen
     {
       addedsaves = (save_1 + save_2 + save_3) /3;
@@ -166,12 +325,12 @@ int frequenzmesser()
       saveit = true;
     }
     
-    if (saveit == true) // Ermittelt ob ein Wert gespeichert werden soll
+    if (saveit) // Ermittelt ob ein Wert gespeichert werden soll
     {
       if (saverun == 0) // Ermittelt in welchen Save die Daten gespeichert werden sollen
       {
         bigsave_1 = addedsaves;
-        if (bigsave_1 < 10 || bigsave_1 > 400 || bigsave_1 < 150) // Bestimmt, ob der Wert im Spektrum ist 
+        if (bigsave_1 < 10 || bigsave_1 > 700 || bigsave_1 < 150) // Bestimmt, ob der Wert im Spektrum ist 
         {
           saverun --;
         }
@@ -181,7 +340,7 @@ int frequenzmesser()
       if (saverun == 1 && saveruntrue == true)
       {
         bigsave_2 = addedsaves;
-        if (bigsave_2 < 10 || bigsave_2 > 400 || bigsave_2 < 150)
+        if (bigsave_2 < 10 || bigsave_2 > 700 || bigsave_2 < 150)
         {
           saverun --;
         }
@@ -191,7 +350,7 @@ int frequenzmesser()
       if (saverun == 2 && saveruntrue == true)
       {
         bigsave_3 = addedsaves;
-        if (bigsave_3 < 10  || bigsave_3 > 400 || bigsave_3 < 150)
+        if (bigsave_3 < 10  || bigsave_3 > 700 || bigsave_3 < 150)
         {
           saverun --;
         }
@@ -201,7 +360,7 @@ int frequenzmesser()
       if (saverun == 3 && saveruntrue == true)
       {
         bigsave_4 = addedsaves;
-        if (bigsave_4 < 10 || bigsave_4 > 400 || bigsave_4 < 150)
+        if (bigsave_4 < 10 || bigsave_4 > 700 || bigsave_4 < 150)
         {
           saverun --;
         }
@@ -211,7 +370,7 @@ int frequenzmesser()
       if (saverun == 4 && saveruntrue == true)
       {
         bigsave_5 = addedsaves;
-        if (bigsave_5 < 10 || bigsave_5 > 400 || bigsave_5 < 150)
+        if (bigsave_5 < 10 || bigsave_5 > 700 || bigsave_5 < 150)
         {
           saverun --;
         }
@@ -222,7 +381,7 @@ int frequenzmesser()
       {
         bigsave_6 = addedsaves;
         notzero = true;
-        if (bigsave_6 < 10  || bigsave_6 > 400 || bigsave_6 < 150)
+        if (bigsave_6 < 10  || bigsave_6 > 700 || bigsave_6 < 150)
         {
           saverun --;
           notzero = false;
@@ -237,14 +396,25 @@ int frequenzmesser()
       }
       saveit = false;      
     }
+
     Serial.print("Speicherungsdurchgang: ");
     Serial.println(saverun);
-    if (calcit == true) // Rechnet das Endergebnis aus
+    lcd.clear();
+    lcd.setCursor(0,0);
+    lcd.print("Zu messsen: ");
+    lcd.setCursor(12,0);
+    int tomeasure = 6 - saverun;
+    lcd.print(tomeasure);
+    lcd.setCursor(0,1);
+    lcd.print("Durchlaeufe");
+
+    if (calcit) // Rechnet das Endergebnis aus
     {
       Serial.println();
       Serial.println();
       Serial.println("Ausrechnen:");
       Serial.println();
+      
       calcit = false;
       saverun = 0;
 
@@ -267,41 +437,26 @@ int frequenzmesser()
       Serial.println(bigcalc_5);
       Serial.println();
       
-      if (bigcalc_1 < 10 && bigcalc_1 > -10) // Bestimmt, ob die Differenzen im Spektrum sind und markiert die zu verwendenden Saves
-      {
-        addup_1 = 1;       }
-      else {
-        addup_1 = 0;
-      }
-      if (bigcalc_2 < 10 && bigcalc_2 > -10)
-      {
-        addup_2 = 1;      }
-      else {
-        addup_2 = 0;
-      }
-      if (bigcalc_3 < 10 && bigcalc_3 > -10)
-      {
-        addup_3 = 1;      }
-      else {
-        addup_3 = 0;
-      }
-      if (bigcalc_4 < 10 && bigcalc_4 > -10)
-      {
-        addup_4 = 1;
-      }
-      else{
-        addup_4 = 0;
-      }
-      if (bigcalc_5 < 10 && bigcalc_5 > -10)
-      {
-        addup_5 = 1; 
-      }
-      else {
-        addup_5 = 0;
-      }
+      // Bestimmt, ob die Differenzen im Spektrum sind und markiert die zu verwendenden Saves
+      if (bigcalc_1 < 10 && bigcalc_1 > -10) {addup_1 = 1;} 
+      else {addup_1 = 0;}
+
+      if (bigcalc_2 < 10 && bigcalc_2 > -10) {addup_2 = 1;}
+      else {addup_2 = 0;}
+
+      if (bigcalc_3 < 10 && bigcalc_3 > -10) {addup_3 = 1;}
+      else {addup_3 = 0;}
+
+      if (bigcalc_4 < 10 && bigcalc_4 > -10) {addup_4 = 1;}
+      else {addup_4 = 0;}
+
+      if (bigcalc_5 < 10 && bigcalc_5 > -10) {addup_5 = 1; }
+      else {addup_5 = 0;}
+
       int addall = addup_1 + addup_2 + addup_3 + addup_4 + addup_5; // Rechnet aus, wie viele Werte verwendet werden
       int usecount = 0;
       int usecount_1 = 0;
+
       if (addall >= 3) // Ermittelt, ob man den ersten Wert verwenden kann
       {
         Serial.println("Es sind mindestens 3 Werte ähnlich genug zu dem ersten Wert.");
@@ -362,6 +517,7 @@ int frequenzmesser()
         Serial.println();
         
         negative = true;
+
         if (addup_1 == 0) // Ermittelt, welche Werte verwendet werden können
         {
           calcupall = calcupall + bigsave_2;
@@ -371,6 +527,7 @@ int frequenzmesser()
           Serial.println("Der 2. Save wird als Richtwert verwendet.");
           Serial.println("Der 2. Save wird verwendet.");
         }
+
         if (addup_2 == 0)
         {
           calcupall = calcupall + bigsave_3;
@@ -384,6 +541,7 @@ int frequenzmesser()
           else{hugecalc1 = notused - bigsave_3;} // Bestimmt was der Richtwert zum Vergleich der Variablen ist
           Serial.println("Der 3. Save wird verwendet.");
         }
+
         if (addup_3 == 0)
         {
           calcupall = calcupall + bigsave_4;
@@ -397,6 +555,7 @@ int frequenzmesser()
           else {hugecalc2 = notused - bigsave_4;}
           Serial.println("Der 4. Save wird verwendet.");
         }
+
         if (addup_4 == 0)
         {
           calcupall = calcupall + bigsave_5;
@@ -410,6 +569,7 @@ int frequenzmesser()
           else {hugecalc3 = notused - bigsave_5;}
           Serial.println("Der 5. Save wird verwendet.");
         }
+
         if (addup_5 == 0)
         {
           calcupall = calcupall + bigsave_6; //Wert wird zu Gesamtergebniss dazuaddiert.
@@ -417,7 +577,9 @@ int frequenzmesser()
           Serial.println("Der 6. Save wird verwendet.");
           hugecalc4 = notused - bigsave_6;
         }
+        
         Serial.println();
+
         if (!(hugecalc1 < 10 && hugecalc1 > -10)) // Bestimmt ob der Wert wirklich verwendet werden kann
         {
           calcupall = calcupall - bigsave_3;
@@ -426,6 +588,7 @@ int frequenzmesser()
           pleaseuse1 = true;
           Serial.println("Der 3. Save wird doch nicht verwendet.");
         }
+
         if (!(hugecalc2 < 10 && hugecalc2 > -10))
         {
           calcupall = calcupall - bigsave_4;
@@ -434,6 +597,7 @@ int frequenzmesser()
           pleaseuse2 = true;
           Serial.println("Der 4. Save wird doch nicht verwendet.");
         }
+
         if (!(hugecalc3 < 10 && hugecalc3 > -10))
         {
           calcupall = calcupall - bigsave_5;
@@ -442,6 +606,7 @@ int frequenzmesser()
           pleaseuse3 = true;
           Serial.println("Der 5. Save wird doch nicht verwendet.");
         }
+
         if (!(hugecalc4 < 10 && hugecalc4 > -10))
         {
           calcupall = calcupall - bigsave_6;
@@ -450,38 +615,100 @@ int frequenzmesser()
           pleaseuse4 = true;
           Serial.println("Der 6. Save wird doch nicht verwendet.");
         }
+
         Serial.println();
+        if ((usecount_1 < 3 || usecount_1 < addall) && notusedcounter < 3)
+        {
+          remeasure = true;
+          break;
+        }
+
         if (notusedcounter >= 3) // Tritt ein, wenn zu viele Werte nicht verwendet werden
         {
           Serial.println("Der als Richtwert verwendete Save wird doch nicht verwendet.");
           Serial.println();
-          calcupall = calcupall - notused;
-          usecount_1 --;
-          if (pleaseuse1 == true) // Verwendet die davor fälschlicherweise nicht genutzten Variablen
+
+          calcupall = 0;
+          usecount_1 = 0;
+        
+          referencevariable = false;
+
+          if (pleaseuse1) // Verwendet die davor fälschlicherweise nicht genutzten Variablen
           {
+            referencevariable = true;
+            referencevariableint = bigsave_3;
             calcupall = calcupall + bigsave_3;
             usecount_1 ++;
-            Serial.println("Der 3. Save wird doch verwendet.");
+            Serial.println("Der 3. Save wird als Referenzwert verwendet.");
           }
-          if (pleaseuse2 == true)
+
+          if (pleaseuse2)
           {
-            calcupall = calcupall + bigsave_4;
-            usecount_1 ++;
-            Serial.println("Der 4. Save wird doch verwendet.");
+            if (!referencevariable)
+            {
+                referencevariable = true;
+                referencevariableint = bigsave_4;
+                calcupall = calcupall + bigsave_4;
+                usecount_1 ++;
+                Serial.println("Der 4. Save wird als Referenzwert verwendet.");
+            }
+            else
+            {
+                int giantcalc1 = referencevariableint - bigsave_6;
+                if (giantcalc1 >= -10 && giantcalc1 <= 10)
+                {
+                    calcupall = calcupall + bigsave_4;
+                    usecount_1 ++;
+                    Serial.println("Der 4. Save wird doch verwendet.");
+                }
+            } 
           }
-          if (pleaseuse3 == true)
+
+          if (pleaseuse3)
           {
-            calcupall = calcupall + bigsave_5;
-            usecount_1 ++;
-            Serial.println("Der 5. Save wird doch verwendet.");
+            if (!referencevariable)
+            {
+                remeasure= true;
+                break;
+            }
+            else
+            {   
+                int giantcalc2 = referencevariableint - bigsave_6;
+                if (giantcalc2 >= -10 && giantcalc2 <= 10)
+                {
+                    calcupall = calcupall + bigsave_5;
+                    usecount_1 ++;
+                    Serial.println("Der 5. Save wird doch verwendet.");
+                }
+            }
           }
-          if (pleaseuse4 == true)
+
+          if (pleaseuse4)
           {
-            calcupall = calcupall + bigsave_6;
-            usecount_1 ++;
-            Serial.println("Der 6. Save wird doch verwendet.");            
+            if (!referencevariable)
+            {
+                remeasure = true;
+                break;
+            }
+            else
+            {
+                int giantcalc3 = referencevariableint - bigsave_6;
+                if (giantcalc3 >= -10 && giantcalc3 <= 10)
+                {
+                    calcupall = calcupall + bigsave_6;
+                    usecount_1 ++;
+                    Serial.println("Der 6. Save wird doch verwendet.");
+                }
+            }        
+          }
+
+          if (usecount_1 < 3)
+          {
+              remeasure = true;
+              break;
           }
         }
+
         Serial.println();
         Serial.println("Die Werte der Saves:");
         Serial.print("Der Wert des 1. Saves: ");  
@@ -498,7 +725,8 @@ int frequenzmesser()
         Serial.println(bigsave_6);
         Serial.println();
       }
-      if (negative == false) // Errechnet die Endfrequenz, wenn der erste Wert verwendet wird
+
+      if (!negative) // Errechnet die Endfrequenz, wenn der erste Wert verwendet wird
       {
         endcalc = calcupall / usecount;
         Serial.print("Endergebnis: ");
@@ -514,37 +742,139 @@ int frequenzmesser()
         calcupall = 0; 
         gotrough = false;       
       }
-  }
+    }
+
   delay (250);
   savecounter = 0;
   save_1 = 0;
   save_2 = 0;
   save_3 = 0;
   }
+
   return endcalc; // Gibt das Endergebnis zuruek
+}
+
+void interrupt()
+{
+  if (dointerrupt)
+  {
+      interrupthappened = true;
+      dointerrupt = false;
+  }
+}
+
+float calculateforce()
+{
+  float force;
+
+  if (seite2)
+  {
+    float variable1 = 3.5387;
+    float variable2 = 67.05;
+    force = freq/variable1-variable2;
+    Serial.println ("Die Konfiguration für Seite 2 wird verwendet.");
+  }
+  else
+  {
+    float variable1 = 0.087;
+    float variable2 = 29.467;
+    force = freq*variable1-variable2;
+  }
+
+  return force;
 }
 
 void loop()
 {
-  if (boolbasefreq == true) // Setzt die Richtfrequenz
-  {
-    basefreq = frequenzmesser();
-    boolbasefreq = false;
-    delay (4000);
-    gotrough = true;
-  }
-  else // Ermittelt die Differenz zwischen der Richtfrequenz und der Frequenz mit Gewicht
-  {
-    Serial.println();
-    Serial.println("2. Frequenz: ");
-    int freq = frequenzmesser ();
-    int freqdiff = basefreq - freq;
-    freqdiff = abs(freqdiff);
-    Serial.print("Frequenzdiffernz zum Grundton: ");
-    Serial.println(freqdiff);
-    Serial.println();
-    gotrough = true;
-    delay (2000);
-    
-  }
+    remeasure:
+    freq = frequenzmesser();
+
+    if (remeasure)
+    {
+      remeasure = false;
+      lcd.clear();
+      lcd.setCursor(0,0);
+      lcd.print("Neue Messung");
+      lcd.setCursor(0,1);
+      lcd.print("notwendig");
+      delay(2000);
+      goto remeasure;
+    }
+
+    if (!stimmen)
+    {
+        float output = calculateforce();
+
+        Serial.println();
+        Serial.print("Kraft: ");
+
+        int intoutput = output;
+        float difference = output - intoutput;
+        float addup = 0;
+
+        if (genau == true)
+        {
+          Serial.println("Der genaue Modus wird verwendet");
+            if (difference > 0.25 && difference < 0.75)
+            {
+                addup = 0.5;
+            }
+            if (difference >= 0.75)
+            {
+                intoutput ++;
+            }
+        }
+        else
+        {
+          intoutput = round(output);
+        }
+
+        int afterpoint = addup * 10;
+
+        String correctoutput = String(intoutput);
+        if (addup != 0 || genau)
+        {
+          correctoutput += ".";
+          correctoutput += afterpoint;
+        }
+
+        Serial.println(correctoutput);
+
+        lcd.clear();
+        lcd.setCursor(0,0);
+        lcd.print("Kraft in N: ");
+        lcd.setCursor(12,0);
+        lcd.print(correctoutput);
+        lcd.setCursor(0,1);
+
+        if (genau) {lcd.print("Auf 0.5 N genau");}
+        else {lcd.print("auf 1 N genau");}
+        
+        delay (6000);
+        gotrough = true;
+    }
+    else
+    {
+        float output = frequenzmesser();
+        int intoutput = output;
+        lcd.clear();
+        lcd.setCursor(0,0);
+        lcd.print("Frequenz:");
+        lcd.setCursor(10,0);
+        lcd.print(intoutput);
+        lcd.setCursor(14,0);
+        lcd.print("Hz");
+        lcd.setCursor(0,1);
+        if (seite2)
+        {
+          lcd.print("Freq. 0: 197 Hz");
+        }
+        else
+        {
+          lcd.print("Freq. 0: 280 Hz");
+        }
+        
+        delay (6000);
+        gotrough = true;
+    }
 }
