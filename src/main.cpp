@@ -196,17 +196,19 @@ private:
   void mmPointCreator() {
     for (int mmPointIteration = 0; mmPointIteration < mmPointIterationGoal; mmPointIteration++) // Create measurement points
     {
-      int waveCounter = 0;
-      long startTime = micros();
+      int waveCounter = -2; // Account for start synchronistion
+      long startTime;
       bool completeWave = true;
 
-      for (int probeIteration = 0; probeIteration < probeIterationGoal; probeIteration++)
+      while (completeWave < 10) // Add two to allow for a good starting time
       {
         int input = analogRead(inputPin);
         if (completeWave && input >= topTrigger)
         {
           waveCounter++;
           completeWave = false;
+          if (waveCounter == 0)
+            startTime = micros();
         }
         else if (input <= bottomTrigger)
           completeWave = true; // Avoid adding incomplete waves to the wave counter
