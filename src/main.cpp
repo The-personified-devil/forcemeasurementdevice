@@ -2,32 +2,32 @@
 // Copyright © 2020 Leonhard Saam
 // Licensed under GNU GPL v3
 
-// #include <LCD.h>
-// #include <LiquidCrystal_I2C.h>
-// #include <Wire.h>
-#include "../lib/MemoryFree-master/MemoryFree.h"
+#include <LCD.h>
+#include <LiquidCrystal_I2C.h>
+#include <Wire.h>
+#include "MemoryFree.h"
 #include <Arduino.h>
 #include <assert.h>
 
-// #define I2C_ADDR 0x27 //Define I2C Address where the PCF8574A is
-// #define BACKLIGHT_PIN 3
-// #define En_pin 2
-// #define Rw_pin 1
-// #define Rs_pin 0
-// #define D4_pin 4
-// #define D5_pin 5
-// #define D6_pin 6
-// #define D7_pin 7
+#define I2C_ADDR 0x27 //Define I2C Address where the PCF8574A is
+#define BACKLIGHT_PIN 3
+#define En_pin 2
+#define Rw_pin 1
+#define Rs_pin 0
+#define D4_pin 4
+#define D5_pin 5
+#define D6_pin 6
+#define D7_pin 7
 
-int readCount = 3;
+int readCount = 3; // Does this have any purpose?
 int pinreads[] = {120, 89, 90};
 int readpos = 0;
 
 
-// LiquidCrystal_I2C lcd(I2C_ADDR, En_pin,Rw_pin,Rs_pin,D4_pin,D5_pin,D6_pin,D7_pin);
+LiquidCrystal_I2C lcd(I2C_ADDR, En_pin,Rw_pin,Rs_pin,D4_pin,D5_pin,D6_pin,D7_pin);
 
-int topTrigger = 560;
-int bottomTrigger = 440;
+int topTrigger = 540;
+int bottomTrigger = 460;
 const long usInSec = 1000000;
 
 const int measurementIterationGoal = 6;
@@ -55,14 +55,14 @@ void setup()
 {
   Serial.begin(500000);
   // attachInterrupt(digitalPinToInterrupt(2), interrupt, FALLING);
-  // lcd.begin (16,2);
-  // lcd.setBacklightPin(BACKLIGHT_PIN,POSITIVE);
-  // lcd.setBacklight(HIGH);
-  // lcd.clear();
-  // lcd.setCursor(0,0);
-  // lcd.print("Kalibrierung");
-  // lcd.setCursor(0,1);
-  // lcd.print("empfohlen");
+  lcd.begin (16,2);
+  lcd.setBacklightPin(BACKLIGHT_PIN,POSITIVE);
+  lcd.setBacklight(HIGH);
+  lcd.clear();
+  lcd.setCursor(0,0);
+  lcd.print("Kalibrierung");
+  lcd.setCursor(0,1);
+  lcd.print("empfohlen");
   mode = Measurement;
 }
 
@@ -81,15 +81,14 @@ private:
           lowCounter ++;
         }
       }
-
-      if (lowCounter > (1/3 * mmPointIterationGoal)) {
+      if (lowCounter > (1./3. * mmPointIterationGoal)) {
         validRun = false;
       }
 
   }
                     //                        measurementIterationGoal     mmVarianceAllowance              mmVarianceAllowance
                     // measurementPoints[]    mmPointIterationGoal         mmPtNeighbourVarianceAllowance   mmPtVarianceAllowance
-  int averageFinder(int* inputArrayPtr, const int& inputArrayLenght, const int& neighbourVarianceAllowance, const int& varianceAllowance) {
+  float averageFinder(int* inputArrayPtr, const int& inputArrayLenght, const int& neighbourVarianceAllowance, const int& varianceAllowance) {
     int*& inputArray = inputArrayPtr;
     int maxValue = inputArray[0]; // Determine maximal and minimal value
     int minValue = inputArray[0];
@@ -108,8 +107,8 @@ private:
     if (necessaryVal >= neighbourVarianceAllowance) // We don't need to do all of this if all values are the same or close enough together to take a clean mean without preprocessing.
     {
       byte neighbourCounter[necessaryVal] = {0};
-      Serial.print("Necessary value: ");
-      Serial.println(necessaryVal);
+      // Serial.print("Necessary value: ");
+      // Serial.println(necessaryVal);
 
       for (int i = 0; i < inputArrayLenght; i++) // Create histogram
       {
@@ -134,8 +133,8 @@ private:
       }
       for (int i = 0; i < necessaryVal; i++) {
         int currentVal = neighbourCounter[i];
-        Serial.print("Ncounter: ");
-        Serial.println(currentVal);
+        // Serial.print("Ncounter: ");
+        // Serial.println(currentVal);
       }
       int maxNeighbours = 0; // Get Point with most variables nearby
       int mNValuesSize = 0;
@@ -152,13 +151,13 @@ private:
       }
 
       int mNValues [mNValuesSize];
-      int mean;
+      float mean;
 
       for (int i = 0; i < necessaryVal; i++){
         int currentVal = neighbourCounter[i];
         if (currentVal == maxNeighbours){
             mNValues[mNValuesIndex] = minValue + i;
-            Serial.println(minValue + i);
+            // Serial.println(minValue + i);
             mNValuesIndex ++;
         }
       }
@@ -169,9 +168,7 @@ private:
         for (int i = 0; i < mNValuesSize; i++){
           sumOfVals += mNValues[i];
         }
-        mean = sumOfVals / mNValuesSize;
-        Serial.print("Mean: ");
-        Serial.println(mean);
+        mean = (float) sumOfVals / (float) mNValuesSize;
         return mean;
       }
 
@@ -188,7 +185,7 @@ private:
       int sumOfmmPoints = 0;
       for (int i = 0; i < inputArrayLenght; i++)
         sumOfmmPoints += inputArray[i];
-      int mean = sumOfmmPoints / inputArrayLenght;
+      float mean = (float) sumOfmmPoints / (float) inputArrayLenght;
       return mean;
     }
   }
@@ -200,7 +197,7 @@ private:
       long startTime;
       bool completeWave = true;
 
-      while (completeWave < 10) // Add two to allow for a good starting time
+      while (waveCounter < 10) // Add two to allow for a good starting time
       {
         int input = analogRead(inputPin);
         if (completeWave && input >= topTrigger)
@@ -218,56 +215,45 @@ private:
       long timeDiff = endTime - startTime;
       long timepWave = timeDiff / waveCounter;
       int freq = usInSec / timepWave;
-      bool validResult; // TODO: Assess if there was no clear overariching average
       measurementPoints[mmPointIteration] = freq;
 
-      Serial.print("Measurement point creator: ");
-      Serial.println(freq);
-      // group frequencies and get median/mean of frequencies
-      // get number of neighbours for number and get modal from number of neighbours
+      // Serial.print("Measurement point creator: ");
+      // Serial.println(freq);
     }
   }
 
-  int mmCreator()
+  float mmCreator()
   {
     int measurementIndex = 0;
-
+    validMeasurement = true;
     while (measurementIndex < measurementIterationGoal)
     {
       validRun = true;
-      int mean;
+      float mean;
       mmPointCreator();
       overMinBarrier();
 
-      if (validRun)
-        mean = averageFinder(measurementPoints, mmPointIterationGoal, mmPtNeighbourVarianceAllowance, mmPtVarianceAllowance);
-
       if (validRun) {
-        measurements[measurementIndex] = mean;
+        mean = averageFinder(measurementPoints, mmPointIterationGoal, mmPtNeighbourVarianceAllowance, mmPtVarianceAllowance);
+        Serial.print("Mean: ");
+        Serial.println(mean);
+
+        measurements[measurementIndex] = round(mean);
         measurementIndex ++;
       }
       else
         Serial.println("Invalid run");
 
-      /*
-          Calculate whether the measurements are valid
-        */
-      // int deviationCounter = 0;
-
-      // for (int i = 0; i < mmPointIterationGoal; i++) {
-      //   int currentMm = measurementPoints[i];
-
-      //   if (currentMm < 50) { // If the frequency is way to low we know that we have either left or have entered a overtone heavy portion, so we invalidate the entire measurement. // Make propotional
-      //     validRun = false;
-      //     break;
-      //   }
-      //   if (abs(modeOfMms - currentMm) > deviationAllowance) deviationCounter ++;
-      // }
-
-      // if (deviationCounter > (2/3 * mmPointIterationGoal)) validRun = false;
+      lcd.setCursor(0,0);
+      lcd.print("Zu messsen: ");
+      lcd.setCursor(12,0);
+      byte toMeasure = measurementIterationGoal - measurementIndex;
+      lcd.print(toMeasure);
+      lcd.setCursor(0,1);
+      lcd.print("Durchlaeufe");
     }
 
-    int mean = averageFinder(measurements, measurementIterationGoal, mmNeighbourVarianceAllowance, mmVarianceAllowance);
+    float mean = averageFinder(measurements, measurementIterationGoal, mmNeighbourVarianceAllowance, mmVarianceAllowance);
     if (mean == 0) {
       validMeasurement = false;
     }
@@ -275,8 +261,9 @@ private:
   }
 
 public:
-  int measure() {
-    int result = mmCreator();
+  float measure() {
+    float result = mmCreator();
+
     if (validMeasurement) {
       Serial.print("End result: ");
       Serial.println(result);
@@ -284,22 +271,41 @@ public:
     else
     {
       Serial.println("Invalid measurement");
+      lcd.clear();
+      lcd.setCursor(0,0);
+      lcd.print("Neue Messung");
+      lcd.setCursor(0,1);
+      lcd.print("notwendig");
+      delay(2000);
     }
+    Serial.println("===============================================================================");
     return result;
   }
-};
+} measurerObj;
 
 class measurementMode {
 public:
   void measurement() {
+    float freq = measurerObj.measure();
+    float force = calculateforce(freq);
 
+    lcd.clear();
+    lcd.setCursor(0,0);
+    lcd.print("Kraft in N: ");
+    lcd.setCursor(12,0);
+    lcd.print(force);
+    lcd.setCursor(0,1);
   }
 
-  // void reset()
-  // {
-  //   // TODO: Write a reset function, so that the options can get called at any point in time
-  // }
-};
+private:
+  float calculateforce(float& freq) // Incomplete and undynamic
+  {
+    const float m = 3.5387;
+    const float b = 67.05;
+    float force = freq * m - b;
+    return force;
+  }
+} mmModeObj;
 
 class tuningMode
 {
@@ -307,7 +313,7 @@ public:
   void tuning()
   {
   }
-};
+} tModeObj;
 
 class optionsMode
 {
@@ -318,12 +324,7 @@ public:
   void options()
   {
   }
-};
-
-measurementMode mmModeObj;
-tuningMode tModeObj;
-optionsMode oModeObj;
-measurer measurerObj;
+} oModeObj;
 
 void loop()
 {
@@ -333,8 +334,7 @@ void loop()
   {
   case Measurement:
     Serial.println("Measurement");
-    // mmModeObj.measurement();
-    measurerObj.measure();
+    mmModeObj.measurement();
 
     break;
 
